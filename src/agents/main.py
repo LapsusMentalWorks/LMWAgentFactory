@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from crewai import Agent, Task, Crew, Process, LLM
+from crewai.tools import tool
 
 # 1. Cargar variables de entorno (.env)
 load_dotenv()
@@ -34,8 +35,22 @@ class AgentsFactorySession:
         print(f"--- Finalizando Iteración {self.iteracion_n} ---")
         # Lógica para persistir el cambio en el MD (o dejar que el Tutor lo haga)
         print("Sesión documentada y guardada.")
+    
+# 3. Definir las Herramientas
+@tool("actualizar_fichero_progreso")
+def actualizar_fichero_progreso(contenido: str) -> str:
+    """Útil para guardar el estado del proyecto en PROGRESS.md. 
+    Debe usarse al final de cada sesión para persistir los aprendizajes y el nuevo backlog."""
+    try:
+        with open("PROGRESS.md", "w", encoding="utf-8") as f:
+            f.write(contenido)
+        return "PROGRESS.md actualizado correctamente."
+    except Exception as e:
+        return f"Error al actualizar el archivo: {e}"
 
-# 3. Definir los Agentes
+
+
+# 4. Definir los Agentes
 project_manager = Agent(
     role='Project Manager de AgentsFactory',
     goal='Diseñar iteraciones de aprendizaje de máximo 3 días para un desarrollador solitario.', # <--- LIMITACIÓN TEMPORAL
@@ -55,14 +70,19 @@ project_manager = Agent(
 
 tutor_ia = Agent(
     role='Tutor de Aprendizaje Agentic AI',
-    goal='Explicar los conceptos técnicos y generar un resumen de aprendizaje al final.',
-    backstory="""Eres un mentor pedagógico. No solo resumes lo que se hizo, sino que 
-    explicas el 'porqué' técnico (arquitectura, patrones) y dejas retos para profundizar.""",
+    goal='Explicar conceptos técnicos y asegurar que PROGRESS.md esté actualizado.',
+    backstory="""Eres el guardián del conocimiento de AgentsFactory. 
+    Tu misión es doble: 
+    1. Explicar el 'porqué' de lo que se ha implementado (método Feynman).
+    2. Usar tu herramienta de escritura para reflejar los cambios en PROGRESS.md, 
+       marcando iteraciones como completadas y pegando el nuevo backlog del PM.
+       Hazlo siguiendo el ejemplo de iteraciones anteriores para mantener la coherencia del historial.""", # <--- ENFOQUE EN DOCUMENTACIÓN Y EXPLICACIÓN
+    tools=[actualizar_fichero_progreso], # <--- Capacidad añadida
     llm=gemini_llm,
     verbose=True
 )
 
-# 4. Definir las Tareas
+# 5. Definir las Tareas
 def crear_tareas(session, project_manager, tutor_ia):
     tarea_pm = Task(
         description=f"""Analiza los requisitos del proyecto basándote en el historial:
@@ -77,15 +97,19 @@ def crear_tareas(session, project_manager, tutor_ia):
     )
 
     tarea_tutor = Task(
-        description=f"""Revisa lo propuesto por el PM y redacta el 'Debriefing de la Sesión'. 
-        Incluye una sección de 'Teoría Aplicada' y actualiza el estado en el archivo PROGRESS.md.""",
-        expected_output="Un bloque de texto en formato Markdown listo para el archivo de progreso.",
+        description="""1. Analiza el backlog de la Iteración 3 propuesto por el PM.
+        2. Redacta el 'Debriefing de la Sesión' explicando el 'porqué' de cada tarea propuesta (método Feynman).
+        3. Genera el contenido completo para el nuevo PROGRESS.md de manera muy resumida, siguiendo el formato de iteraciones anteriores.:
+        - Cambia el estado de la Iteración 2 a '✅ Completada'.
+        - Añade el backlog de la Iteración 3 en la sección correspondiente.
+        4. USA la herramienta 'actualizar_fichero_progreso' para guardar los cambios en el disco.""",
+        expected_output="Confirmación de que el archivo ha sido actualizado y un breve resumen de la teoría.",
         agent=tutor_ia,
-        context=[tarea_pm] # El tutor necesita saber qué hizo el PM
+        context=[tarea_pm]
     )
     return [tarea_pm, tarea_tutor]
 
-# 5. ¡Arrancar el proceso!
+# 6. ¡Arrancar el proceso!
 if __name__ == "__main__":
     print("### Starting AgentFactory v1.0 ###")
     try:
